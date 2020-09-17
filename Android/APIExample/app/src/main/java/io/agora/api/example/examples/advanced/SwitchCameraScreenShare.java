@@ -236,7 +236,7 @@ public class SwitchCameraScreenShare extends BaseFragment implements View.OnClic
                 renderMode.setText(String.format(getString(R.string.rendermode), getString(R.string.hidden)));
             }
 //            setRemotePreview(getContext());
-//            ENGINE.setRemoteRenderMode(remoteUid, curRenderMode, curMirrorMode.getValue());
+            ENGINE.setRemoteRenderMode(remoteUid, curRenderMode, curMirrorMode.getValue());
         } else if (v.getId() == R.id.camera) {
             unbindVideoService();
             handler.postDelayed(() -> {
