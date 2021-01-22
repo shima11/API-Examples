@@ -146,8 +146,10 @@ public class SwitchCameraScreenShare extends BaseFragment implements View.OnClic
                 metrics.heightPixels = (int) (((float) metrics.heightPixels) - (metrics.heightPixels * percent));
                 metrics.widthPixels = (int) (((float) metrics.widthPixels) - (metrics.widthPixels * percent));
 
-                data.putExtra(ExternalVideoInputManager.FLAG_SCREEN_WIDTH, metrics.widthPixels);
-                data.putExtra(ExternalVideoInputManager.FLAG_SCREEN_HEIGHT, metrics.heightPixels);
+//                data.putExtra(ExternalVideoInputManager.FLAG_SCREEN_WIDTH, metrics.widthPixels);
+//                data.putExtra(ExternalVideoInputManager.FLAG_SCREEN_HEIGHT, metrics.heightPixels);
+                data.putExtra(ExternalVideoInputManager.FLAG_SCREEN_WIDTH, 1080);
+                data.putExtra(ExternalVideoInputManager.FLAG_SCREEN_HEIGHT, 1920);
                 data.putExtra(ExternalVideoInputManager.FLAG_SCREEN_DPI, (int) metrics.density);
                 data.putExtra(ExternalVideoInputManager.FLAG_FRAME_RATE, DEFAULT_SHARE_FRAME_RATE);
                 setVideoConfig(ExternalVideoInputManager.TYPE_SCREEN_SHARE, metrics.widthPixels, metrics.heightPixels);

@@ -2,8 +2,8 @@
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
-    android:fitsSystemWindows="true"
     android:layout_height="match_parent"
+    android:fitsSystemWindows="true"
     tools:context=".examples.advanced.RTMPStreaming">
 
     <RelativeLayout
@@ -29,8 +29,8 @@
             android:id="@+id/ll_TransCode"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_alignParentEnd="true"
             android:layout_above="@id/ll_join"
+            android:layout_alignParentEnd="true"
             android:layout_marginBottom="10dp"
             android:gravity="center_vertical"
             android:orientation="horizontal">
@@ -39,15 +39,15 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="是否转码"/>
+                android:text="是否转码" />
 
             <Switch
                 android:id="@+id/transCode_Switch"
                 android:layout_width="wrap_content"
-                android:layout_marginStart="8dp"
                 android:layout_height="wrap_content"
                 android:layout_alignParentRight="true"
-                android:checked="true"/>
+                android:layout_marginStart="8dp"
+                android:checked="true" />
 
         </LinearLayout>
 
@@ -93,7 +93,7 @@
             android:layout_weight="1"
             android:hint="@string/url"
             android:singleLine="true"
-            android:text="rtmp://47.92.91.240:1935/stream/room0" />
+            android:text="rtmp://ali-push.broadcastapp.agoraio.cn/live/aaa" />
 
         <androidx.appcompat.widget.AppCompatButton
             android:id="@+id/btn_publish"

@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <string name="agora_app_id" translatable="false"></string>
-    <string name="agora_access_token" translatable="false"></string>
+    <!--    <string name="agora_app_id" translatable="false">aab8b8f5a8cd4469a63042fcfafe7063</string>-->
+    <string name="agora_app_id" translatable="false">80e54398fed94ae8a010acf782f569b7</string>
+    <string name="agora_access_token" translatable="false">00680e54398fed94ae8a010acf782f569b7IAClvTLlMcRiIzG+WD6sDjnaNLntU+O+d94qE9j9FJgkeC1zB/AAAAAAIgCG1ViNxxW2XwQAAQAAAAAAAgAAAAAAAwAAAAAABAAAAAAA</string>
 </resources>
