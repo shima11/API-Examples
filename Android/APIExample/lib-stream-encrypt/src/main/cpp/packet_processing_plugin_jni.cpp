@@ -36,10 +36,10 @@ public:
     AgoraRTCPacketObserver()
     {
         __android_log_print(ANDROID_LOG_INFO, "agoraencryption", "AgoraRTCPacketObserver0");
-        m_txAudioBuffer.resize(2048);
-        m_rxAudioBuffer.resize(2048);
-        m_txVideoBuffer.resize(2048);
-        m_rxVideoBuffer.resize(2048);
+        m_txAudioBuffer.resize(1024);
+        m_rxAudioBuffer.resize(1024);
+        m_txVideoBuffer.resize(1024);
+        m_rxVideoBuffer.resize(1024);
         __android_log_print(ANDROID_LOG_INFO, "agoraencryption", "AgoraRTCPacketObserver1");
     }
 
@@ -47,7 +47,7 @@ public:
     {
 
         int outlen;
-        unsigned char outbuf[2048];
+        unsigned char outbuf[1024];
         /* Set cipher type and mode */
         EVP_EncryptInit_ex(ctx_audio_send, EVP_aes_256_gcm(), NULL, NULL, NULL);
         /* Set IV length if default 96 bits is not appropriate */
@@ -66,7 +66,7 @@ public:
     {
 
         int outlen;
-        unsigned char outbuf[2048];
+        unsigned char outbuf[1024];
         /* Set cipher type and mode */
         EVP_EncryptInit_ex(ctx_video_send, EVP_aes_256_gcm(), NULL, NULL, NULL);
         /* Set IV length if default 96 bits is not appropriate */
@@ -83,7 +83,7 @@ public:
     virtual bool onReceiveAudioPacket(Packet& packet)
     {
         int outlen;
-        unsigned char outbuf[2048];
+        unsigned char outbuf[1024];
         /* Select cipher */
         EVP_DecryptInit_ex(ctx_audio_receive, EVP_aes_256_gcm(), NULL, NULL, NULL);
         /* Set IV length, omit for 96 bits */
@@ -101,7 +101,7 @@ public:
     virtual bool onReceiveVideoPacket(Packet& packet)
     {
         int outlen;
-        unsigned char outbuf[2048];
+        unsigned char outbuf[1024];
         /* Select cipher */
         EVP_DecryptInit_ex(ctx_video_receive, EVP_aes_256_gcm(), NULL, NULL, NULL);
         /* Set IV length, omit for 96 bits */
@@ -186,10 +186,10 @@ Java_io_agora_api_streamencrypt_PacketProcessor_doRegisterProcessing
      *      calling this method.*/
     int code = rtcEngine->registerPacketObserver(&s_packetObserver);
     __android_log_print(ANDROID_LOG_INFO, "agoraencryption", "%d", code);
-    EVP_CIPHER_CTX_free(s_packetObserver.ctx_audio_send);
-    EVP_CIPHER_CTX_free(s_packetObserver.ctx_video_send);
-    EVP_CIPHER_CTX_free(s_packetObserver.ctx_audio_receive);
-    EVP_CIPHER_CTX_free(s_packetObserver.ctx_video_receive);
+    s_packetObserver.ctx_audio_send = EVP_CIPHER_CTX_new();
+    s_packetObserver.ctx_video_send = EVP_CIPHER_CTX_new();
+    s_packetObserver.ctx_audio_receive = EVP_CIPHER_CTX_new();
+    s_packetObserver.ctx_video_receive = EVP_CIPHER_CTX_new();
 }
 
 JNIEXPORT void JNICALL
