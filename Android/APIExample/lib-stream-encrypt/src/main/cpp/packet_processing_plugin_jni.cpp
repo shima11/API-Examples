@@ -25,20 +25,14 @@ static const unsigned char gcm_iv[] = {
         0x99, 0xaa, 0x3e, 0x68, 0xed, 0x81, 0x73, 0xa0, 0xee, 0xd0, 0x66, 0x84
 };
 
-static const unsigned char gcm_aad[] = {
-        0x4d, 0x23, 0xc3, 0xce, 0xc3, 0x34, 0xb4, 0x9b, 0xdb, 0x37, 0x0c, 0x43,
-        0x7f, 0xec, 0x78, 0xde
-};
-
-static const unsigned char gcm_tag[] = {
-        0x67, 0xba, 0x05, 0x10, 0x26, 0x2a, 0xe4, 0x87, 0xd7, 0x37, 0xee, 0x62,
-        0x98, 0xf7, 0x7e, 0x0c
-};
-
 /**stream data frame listener*/
 class AgoraRTCPacketObserver : public agora::rtc::IPacketObserver
 {
 public:
+    EVP_CIPHER_CTX *ctx_audio_send;
+    EVP_CIPHER_CTX *ctx_audio_receive;
+    EVP_CIPHER_CTX *ctx_video_send;
+    EVP_CIPHER_CTX *ctx_video_receive;
     AgoraRTCPacketObserver()
     {
         __android_log_print(ANDROID_LOG_INFO, "agoraencryption", "AgoraRTCPacketObserver0");
@@ -49,135 +43,76 @@ public:
         __android_log_print(ANDROID_LOG_INFO, "agoraencryption", "AgoraRTCPacketObserver1");
     }
 
-    /**Occurs when the local user sends an audio packet.
-     * @param packet The sent audio packet.
-     * @return
-     *   true: The audio packet is sent successfully.
-     *   false: The audio packet is discarded.*/
-    virtual bool onSendAudioPacket(Packet &packet)
+    virtual bool onSendAudioPacket(Packet& packet)
     {
-        __android_log_print(ANDROID_LOG_INFO, "agoraencryption", "onSendAudioPacket0");
-        EVP_CIPHER_CTX *ctx;
+
         int outlen;
         unsigned char outbuf[2048];
-        ctx = EVP_CIPHER_CTX_new();
         /* Set cipher type and mode */
-        EVP_EncryptInit_ex(ctx, EVP_aes_256_gcm(), NULL, NULL, NULL);
+        EVP_EncryptInit_ex(ctx_audio_send, EVP_aes_256_gcm(), NULL, NULL, NULL);
         /* Set IV length if default 96 bits is not appropriate */
-        EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_SET_IVLEN, sizeof(gcm_iv), NULL);
+        EVP_CIPHER_CTX_ctrl(ctx_audio_send, EVP_CTRL_GCM_SET_IVLEN, sizeof(gcm_iv), NULL);
         /* Initialise key and IV */
-        EVP_EncryptInit_ex(ctx, NULL, NULL, gcm_key, gcm_iv);
-        /* Zero or more calls to specify any AAD */
-        EVP_EncryptUpdate(ctx, NULL, &outlen, gcm_aad, sizeof(gcm_aad));
+        EVP_EncryptInit_ex(ctx_audio_send, NULL, NULL, gcm_key, gcm_iv);
         /* Encrypt plaintext */
-        EVP_EncryptUpdate(ctx, outbuf, &outlen, packet.buffer, packet.size);
-        /* Output encrypted block */
-
+        EVP_EncryptUpdate(ctx_audio_send, outbuf, &outlen, packet.buffer, packet.size);
         //assign new buffer and the length back to SDK
         packet.buffer = outbuf;
         packet.size = outlen;
-        EVP_EncryptFinal_ex(ctx, outbuf, &outlen);
-        /* Get tag */
-        EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_GET_TAG, 16, outbuf);
-        EVP_CIPHER_CTX_free(ctx);
         return true;
     }
 
-    /**Occurs when the local user sends a video packet.
-     * @param packet The sent video packet.
-     * @return
-     *   true: The video packet is sent successfully.
-     *   false: The video packet is discarded.*/
-    virtual bool onSendVideoPacket(Packet &packet)
+    virtual bool onSendVideoPacket(Packet& packet)
     {
-        __android_log_print(ANDROID_LOG_INFO, "agoraencryption", "onSendAudioPacket1%d", 1);
-        EVP_CIPHER_CTX *ctx;
+
         int outlen;
         unsigned char outbuf[2048];
-        ctx = EVP_CIPHER_CTX_new();
         /* Set cipher type and mode */
-        EVP_EncryptInit_ex(ctx, EVP_aes_256_gcm(), NULL, NULL, NULL);
+        EVP_EncryptInit_ex(ctx_video_send, EVP_aes_256_gcm(), NULL, NULL, NULL);
         /* Set IV length if default 96 bits is not appropriate */
-        EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_SET_IVLEN, sizeof(gcm_iv), NULL);
+        EVP_CIPHER_CTX_ctrl(ctx_video_send, EVP_CTRL_GCM_SET_IVLEN, sizeof(gcm_iv), NULL);
         /* Initialise key and IV */
-        EVP_EncryptInit_ex(ctx, NULL, NULL, gcm_key, gcm_iv);
-        /* Zero or more calls to specify any AAD */
-        EVP_EncryptUpdate(ctx, NULL, &outlen, gcm_aad, sizeof(gcm_aad));
-        /* Encrypt plaintext */
-        EVP_EncryptUpdate(ctx, outbuf, &outlen, packet.buffer, packet.size);
-        /* Output encrypted block */
-
+        EVP_EncryptInit_ex(ctx_video_send, NULL, NULL, gcm_key, gcm_iv);
+        EVP_EncryptUpdate(ctx_video_send, outbuf, &outlen, packet.buffer, packet.size);
         //assign new buffer and the length back to SDK
         packet.buffer = outbuf;
         packet.size = outlen;
-        EVP_EncryptFinal_ex(ctx, outbuf, &outlen);
-        /* Get tag */
-        EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_GET_TAG, 16, outbuf);
-        EVP_CIPHER_CTX_free(ctx);
         return true;
     }
 
-    /**Occurs when the local user receives an audio packet.
-     * @param packet The received audio packet.
-     * @return
-     *   true: The audio packet is received successfully.
-     *   false: The audio packet is discarded.*/
-    virtual bool onReceiveAudioPacket(Packet &packet)
+    virtual bool onReceiveAudioPacket(Packet& packet)
     {
-        __android_log_print(ANDROID_LOG_INFO, "agoraencryption", "onReceiveAudioPacket0");
-        EVP_CIPHER_CTX *ctx;
-        int outlen, tmplen, rv;
+        int outlen;
         unsigned char outbuf[2048];
-        ctx = EVP_CIPHER_CTX_new();
         /* Select cipher */
-        EVP_DecryptInit_ex(ctx, EVP_aes_256_gcm(), NULL, NULL, NULL);
+        EVP_DecryptInit_ex(ctx_audio_receive, EVP_aes_256_gcm(), NULL, NULL, NULL);
         /* Set IV length, omit for 96 bits */
-        EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_SET_IVLEN, sizeof(gcm_iv), NULL);
+        EVP_CIPHER_CTX_ctrl(ctx_audio_receive, EVP_CTRL_GCM_SET_IVLEN, sizeof(gcm_iv), NULL);
         /* Specify key and IV */
-        EVP_DecryptInit_ex(ctx, NULL, NULL, gcm_key, gcm_iv);
-        /* Zero or more calls to specify any AAD */
-        EVP_DecryptUpdate(ctx, NULL, &outlen, gcm_aad, sizeof(gcm_aad));
+        EVP_DecryptInit_ex(ctx_audio_receive, NULL, NULL, gcm_key, gcm_iv);
         /* Decrypt plaintext */
-        EVP_DecryptUpdate(ctx, outbuf, &outlen, packet.buffer, packet.size);
+        EVP_DecryptUpdate(ctx_audio_receive, outbuf, &outlen, packet.buffer, packet.size);
         //assign new buffer and the length back to SDK
         packet.buffer = outbuf;
         packet.size = outlen;
-        EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_SET_TAG, sizeof(gcm_tag),
-                            (void *)gcm_tag);
-        rv = EVP_DecryptFinal_ex(ctx, outbuf, &outlen);
-        EVP_CIPHER_CTX_free(ctx);
         return true;
     }
 
-    /**Occurs when the local user receives a video packet.
-     * @param packet The received video packet.
-     * @return
-     *   true: The video packet is received successfully.
-     *   false: The video packet is discarded.*/
-    virtual bool onReceiveVideoPacket(Packet &packet)
+    virtual bool onReceiveVideoPacket(Packet& packet)
     {
-        __android_log_print(ANDROID_LOG_INFO, "agoraencryption", "onReceiveAudioPacket1");
-        EVP_CIPHER_CTX *ctx;
-        int outlen, tmplen, rv;
+        int outlen;
         unsigned char outbuf[2048];
-        ctx = EVP_CIPHER_CTX_new();
         /* Select cipher */
-        EVP_DecryptInit_ex(ctx, EVP_aes_256_gcm(), NULL, NULL, NULL);
+        EVP_DecryptInit_ex(ctx_video_receive, EVP_aes_256_gcm(), NULL, NULL, NULL);
         /* Set IV length, omit for 96 bits */
-        EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_SET_IVLEN, sizeof(gcm_iv), NULL);
+        EVP_CIPHER_CTX_ctrl(ctx_video_receive, EVP_CTRL_GCM_SET_IVLEN, sizeof(gcm_iv), NULL);
         /* Specify key and IV */
-        EVP_DecryptInit_ex(ctx, NULL, NULL, gcm_key, gcm_iv);
-        /* Zero or more calls to specify any AAD */
-        EVP_DecryptUpdate(ctx, NULL, &outlen, gcm_aad, sizeof(gcm_aad));
+        EVP_DecryptInit_ex(ctx_video_receive, NULL, NULL, gcm_key, gcm_iv);
         /* Decrypt plaintext */
-        EVP_DecryptUpdate(ctx, outbuf, &outlen, packet.buffer, packet.size);
+        EVP_DecryptUpdate(ctx_video_receive, outbuf, &outlen, packet.buffer, packet.size);
         //assign new buffer and the length back to SDK
         packet.buffer = outbuf;
         packet.size = outlen;
-        EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_SET_TAG, sizeof(gcm_tag),
-                            (void *)gcm_tag);
-        rv = EVP_DecryptFinal_ex(ctx, outbuf, &outlen);
-        EVP_CIPHER_CTX_free(ctx);
         return true;
     }
 
@@ -251,6 +186,10 @@ Java_io_agora_api_streamencrypt_PacketProcessor_doRegisterProcessing
      *      calling this method.*/
     int code = rtcEngine->registerPacketObserver(&s_packetObserver);
     __android_log_print(ANDROID_LOG_INFO, "agoraencryption", "%d", code);
+    EVP_CIPHER_CTX_free(s_packetObserver.ctx_audio_send);
+    EVP_CIPHER_CTX_free(s_packetObserver.ctx_video_send);
+    EVP_CIPHER_CTX_free(s_packetObserver.ctx_audio_receive);
+    EVP_CIPHER_CTX_free(s_packetObserver.ctx_video_receive);
 }
 
 JNIEXPORT void JNICALL
@@ -260,6 +199,10 @@ Java_io_agora_api_streamencrypt_PacketProcessor_doUnregisterProcessing
     if (!rtcEngine) return;
     __android_log_print(ANDROID_LOG_INFO, "agoraencryption", "doUnregisterProcessing");
     rtcEngine->registerPacketObserver(nullptr);
+    EVP_CIPHER_CTX_free(s_packetObserver.ctx_audio_send);
+    EVP_CIPHER_CTX_free(s_packetObserver.ctx_video_send);
+    EVP_CIPHER_CTX_free(s_packetObserver.ctx_audio_receive);
+    EVP_CIPHER_CTX_free(s_packetObserver.ctx_video_receive);
 }
 
 #ifdef __cplusplus
