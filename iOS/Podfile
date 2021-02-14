@@ -8,10 +8,12 @@ target 'APIExample' do
   pod 'AGEVideoLayout', '~> 1.0.2'
   pod 'AgoraRtcEngine_iOS', '3.3.0'
   pod 'AgoraMediaPlayer_iOS', '1.2.2'
+  pod 'OpenSSL-Universal', '1.0.2.17'
 end
 
 target 'Agora-ScreenShare-Extension' do
 
   use_frameworks!
   pod 'AgoraRtcEngine_iOS', '3.3.0'
+  
 end

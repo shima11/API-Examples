@@ -4,6 +4,8 @@
 #include <string.h>
 #include <limits.h>
 #include <assert.h>
+#include <openssl/bio.h>
+#include <openssl/evp.h>
 
 #include <vector>
 #include <algorithm>
@@ -12,6 +14,26 @@
 #include "./include/agora/IAgoraRtcEngine.h"
 
 #include "./include/packet_processing_plugin_jni.h"
+
+static const unsigned char gcm_key[] = {
+        0xee, 0xbc, 0x1f, 0x57, 0x48, 0x7f, 0x51, 0x92, 0x1c, 0x04, 0x65, 0x66,
+        0x5f, 0x8a, 0xe6, 0xd1, 0x65, 0x8b, 0xb2, 0x6d, 0xe6, 0xf8, 0xa0, 0x69,
+        0xa3, 0x52, 0x02, 0x93, 0xa5, 0x72, 0x07, 0x8f
+};
+
+static const unsigned char gcm_iv[] = {
+        0x99, 0xaa, 0x3e, 0x68, 0xed, 0x81, 0x73, 0xa0, 0xee, 0xd0, 0x66, 0x84
+};
+
+static const unsigned char gcm_aad[] = {
+        0x4d, 0x23, 0xc3, 0xce, 0xc3, 0x34, 0xb4, 0x9b, 0xdb, 0x37, 0x0c, 0x43,
+        0x7f, 0xec, 0x78, 0xde
+};
+
+static const unsigned char gcm_tag[] = {
+        0x67, 0xba, 0x05, 0x10, 0x26, 0x2a, 0xe4, 0x87, 0xd7, 0x37, 0xee, 0x62,
+        0x98, 0xf7, 0x7e, 0x0c
+};
 
 /**stream data frame listener*/
 class AgoraRTCPacketObserver : public agora::rtc::IPacketObserver
@@ -35,19 +57,29 @@ public:
     virtual bool onSendAudioPacket(Packet &packet)
     {
         __android_log_print(ANDROID_LOG_INFO, "agoraencryption", "onSendAudioPacket0");
-        int i;
-        //encrypt the packet
-        const unsigned char *p = packet.buffer;
-        const unsigned char *pe = packet.buffer + packet.size;
+        EVP_CIPHER_CTX *ctx;
+        int outlen;
+        unsigned char outbuf[2048];
+        ctx = EVP_CIPHER_CTX_new();
+        /* Set cipher type and mode */
+        EVP_EncryptInit_ex(ctx, EVP_aes_256_gcm(), NULL, NULL, NULL);
+        /* Set IV length if default 96 bits is not appropriate */
+        EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_SET_IVLEN, sizeof(gcm_iv), NULL);
+        /* Initialise key and IV */
+        EVP_EncryptInit_ex(ctx, NULL, NULL, gcm_key, gcm_iv);
+        /* Zero or more calls to specify any AAD */
+        EVP_EncryptUpdate(ctx, NULL, &outlen, gcm_aad, sizeof(gcm_aad));
+        /* Encrypt plaintext */
+        EVP_EncryptUpdate(ctx, outbuf, &outlen, packet.buffer, packet.size);
+        /* Output encrypted block */
 
-
-        for (i = 0; p < pe && i < m_txAudioBuffer.size(); ++p, ++i)
-        {
-            m_txAudioBuffer[i] = *p ^ 0x55;
-        }
         //assign new buffer and the length back to SDK
-        packet.buffer = &m_txAudioBuffer[0];
-        packet.size = i;
+        packet.buffer = outbuf;
+        packet.size = outlen;
+        EVP_EncryptFinal_ex(ctx, outbuf, &outlen);
+        /* Get tag */
+        EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_GET_TAG, 16, outbuf);
+        EVP_CIPHER_CTX_free(ctx);
         return true;
     }
 
@@ -59,17 +91,29 @@ public:
     virtual bool onSendVideoPacket(Packet &packet)
     {
         __android_log_print(ANDROID_LOG_INFO, "agoraencryption", "onSendAudioPacket1%d", 1);
-        int i;
-        //encrypt the packet
-        const unsigned char *p = packet.buffer;
-        const unsigned char *pe = packet.buffer + packet.size;
-        for (i = 0; p < pe && i < m_txVideoBuffer.size(); ++p, ++i)
-        {
-            m_txVideoBuffer[i] = *p ^ 0x55;
-        }
+        EVP_CIPHER_CTX *ctx;
+        int outlen;
+        unsigned char outbuf[2048];
+        ctx = EVP_CIPHER_CTX_new();
+        /* Set cipher type and mode */
+        EVP_EncryptInit_ex(ctx, EVP_aes_256_gcm(), NULL, NULL, NULL);
+        /* Set IV length if default 96 bits is not appropriate */
+        EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_SET_IVLEN, sizeof(gcm_iv), NULL);
+        /* Initialise key and IV */
+        EVP_EncryptInit_ex(ctx, NULL, NULL, gcm_key, gcm_iv);
+        /* Zero or more calls to specify any AAD */
+        EVP_EncryptUpdate(ctx, NULL, &outlen, gcm_aad, sizeof(gcm_aad));
+        /* Encrypt plaintext */
+        EVP_EncryptUpdate(ctx, outbuf, &outlen, packet.buffer, packet.size);
+        /* Output encrypted block */
+
         //assign new buffer and the length back to SDK
-        packet.buffer = &m_txVideoBuffer[0];
-        packet.size = i;
+        packet.buffer = outbuf;
+        packet.size = outlen;
+        EVP_EncryptFinal_ex(ctx, outbuf, &outlen);
+        /* Get tag */
+        EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_GET_TAG, 16, outbuf);
+        EVP_CIPHER_CTX_free(ctx);
         return true;
     }
 
@@ -81,17 +125,27 @@ public:
     virtual bool onReceiveAudioPacket(Packet &packet)
     {
         __android_log_print(ANDROID_LOG_INFO, "agoraencryption", "onReceiveAudioPacket0");
-        int i = 0;
-        //decrypt the packet
-        const unsigned char *p = packet.buffer;
-        const unsigned char *pe = packet.buffer + packet.size;
-        for (i = 0; p < pe && i < m_rxAudioBuffer.size(); ++p, ++i)
-        {
-            m_rxAudioBuffer[i] = *p ^ 0x55;
-        }
+        EVP_CIPHER_CTX *ctx;
+        int outlen, tmplen, rv;
+        unsigned char outbuf[2048];
+        ctx = EVP_CIPHER_CTX_new();
+        /* Select cipher */
+        EVP_DecryptInit_ex(ctx, EVP_aes_256_gcm(), NULL, NULL, NULL);
+        /* Set IV length, omit for 96 bits */
+        EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_SET_IVLEN, sizeof(gcm_iv), NULL);
+        /* Specify key and IV */
+        EVP_DecryptInit_ex(ctx, NULL, NULL, gcm_key, gcm_iv);
+        /* Zero or more calls to specify any AAD */
+        EVP_DecryptUpdate(ctx, NULL, &outlen, gcm_aad, sizeof(gcm_aad));
+        /* Decrypt plaintext */
+        EVP_DecryptUpdate(ctx, outbuf, &outlen, packet.buffer, packet.size);
         //assign new buffer and the length back to SDK
-        packet.buffer = &m_rxAudioBuffer[0];
-        packet.size = i;
+        packet.buffer = outbuf;
+        packet.size = outlen;
+        EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_SET_TAG, sizeof(gcm_tag),
+                            (void *)gcm_tag);
+        rv = EVP_DecryptFinal_ex(ctx, outbuf, &outlen);
+        EVP_CIPHER_CTX_free(ctx);
         return true;
     }
 
@@ -103,19 +157,27 @@ public:
     virtual bool onReceiveVideoPacket(Packet &packet)
     {
         __android_log_print(ANDROID_LOG_INFO, "agoraencryption", "onReceiveAudioPacket1");
-        int i = 0;
-        //decrypt the packet
-        const unsigned char *p = packet.buffer;
-        const unsigned char *pe = packet.buffer + packet.size;
-
-
-        for (i = 0; p < pe && i < m_rxVideoBuffer.size(); ++p, ++i)
-        {
-            m_rxVideoBuffer[i] = *p ^ 0x55;
-        }
+        EVP_CIPHER_CTX *ctx;
+        int outlen, tmplen, rv;
+        unsigned char outbuf[2048];
+        ctx = EVP_CIPHER_CTX_new();
+        /* Select cipher */
+        EVP_DecryptInit_ex(ctx, EVP_aes_256_gcm(), NULL, NULL, NULL);
+        /* Set IV length, omit for 96 bits */
+        EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_SET_IVLEN, sizeof(gcm_iv), NULL);
+        /* Specify key and IV */
+        EVP_DecryptInit_ex(ctx, NULL, NULL, gcm_key, gcm_iv);
+        /* Zero or more calls to specify any AAD */
+        EVP_DecryptUpdate(ctx, NULL, &outlen, gcm_aad, sizeof(gcm_aad));
+        /* Decrypt plaintext */
+        EVP_DecryptUpdate(ctx, outbuf, &outlen, packet.buffer, packet.size);
         //assign new buffer and the length back to SDK
-        packet.buffer = &m_rxVideoBuffer[0];
-        packet.size = i;
+        packet.buffer = outbuf;
+        packet.size = outlen;
+        EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_AEAD_SET_TAG, sizeof(gcm_tag),
+                            (void *)gcm_tag);
+        rv = EVP_DecryptFinal_ex(ctx, outbuf, &outlen);
+        EVP_CIPHER_CTX_free(ctx);
         return true;
     }
 

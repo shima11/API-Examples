@@ -9,6 +9,10 @@
 #import <Foundation/Foundation.h>
 #import <AgoraRtcKit/AgoraRtcEngineKit.h>
 
+#include <openssl/bio.h>
+#include <openssl/evp.h>
+
+
 @interface AgoraCustomEncryption : NSObject
 
 + (void)registerPacketProcessing:(AgoraRtcEngineKit *)rtcEngineKit;
