@@ -4,6 +4,8 @@
 #include <string.h>
 #include <limits.h>
 #include <assert.h>
+#include <openssl/bio.h>
+#include <openssl/evp.h>
 
 #include <vector>
 #include <algorithm>
@@ -13,10 +15,24 @@
 
 #include "./include/packet_processing_plugin_jni.h"
 
+static const unsigned char gcm_key[] = {
+        0xee, 0xbc, 0x1f, 0x57, 0x48, 0x7f, 0x51, 0x92, 0x1c, 0x04, 0x65, 0x66,
+        0x5f, 0x8a, 0xe6, 0xd1, 0x65, 0x8b, 0xb2, 0x6d, 0xe6, 0xf8, 0xa0, 0x69,
+        0xa3, 0x52, 0x02, 0x93, 0xa5, 0x72, 0x07, 0x8f
+};
+
+static const unsigned char gcm_iv[] = {
+        0x99, 0xaa, 0x3e, 0x68, 0xed, 0x81, 0x73, 0xa0, 0xee, 0xd0, 0x66, 0x84
+};
+
 /**stream data frame listener*/
 class AgoraRTCPacketObserver : public agora::rtc::IPacketObserver
 {
 public:
+    EVP_CIPHER_CTX *ctx_audio_send;
+    EVP_CIPHER_CTX *ctx_audio_receive;
+    EVP_CIPHER_CTX *ctx_video_send;
+    EVP_CIPHER_CTX *ctx_video_receive;
     AgoraRTCPacketObserver()
     {
         __android_log_print(ANDROID_LOG_INFO, "agoraencryption", "AgoraRTCPacketObserver0");
@@ -27,95 +43,76 @@ public:
         __android_log_print(ANDROID_LOG_INFO, "agoraencryption", "AgoraRTCPacketObserver1");
     }
 
-    /**Occurs when the local user sends an audio packet.
-     * @param packet The sent audio packet.
-     * @return
-     *   true: The audio packet is sent successfully.
-     *   false: The audio packet is discarded.*/
-    virtual bool onSendAudioPacket(Packet &packet)
+    virtual bool onSendAudioPacket(Packet& packet)
     {
-        __android_log_print(ANDROID_LOG_INFO, "agoraencryption", "onSendAudioPacket0");
-        int i;
-        //encrypt the packet
-        const unsigned char *p = packet.buffer;
-        const unsigned char *pe = packet.buffer + packet.size;
 
-
-        for (i = 0; p < pe && i < m_txAudioBuffer.size(); ++p, ++i)
-        {
-            m_txAudioBuffer[i] = *p ^ 0x55;
-        }
+        int outlen;
+        unsigned char outbuf[2048];
+        /* Set cipher type and mode */
+        EVP_EncryptInit_ex(ctx_audio_send, EVP_aes_256_gcm(), NULL, NULL, NULL);
+        /* Set IV length if default 96 bits is not appropriate */
+        EVP_CIPHER_CTX_ctrl(ctx_audio_send, EVP_CTRL_GCM_SET_IVLEN, sizeof(gcm_iv), NULL);
+        /* Initialise key and IV */
+        EVP_EncryptInit_ex(ctx_audio_send, NULL, NULL, gcm_key, gcm_iv);
+        /* Encrypt plaintext */
+        EVP_EncryptUpdate(ctx_audio_send, outbuf, &outlen, packet.buffer, packet.size);
         //assign new buffer and the length back to SDK
-        packet.buffer = &m_txAudioBuffer[0];
-        packet.size = i;
+        packet.buffer = outbuf;
+        packet.size = outlen;
         return true;
     }
 
-    /**Occurs when the local user sends a video packet.
-     * @param packet The sent video packet.
-     * @return
-     *   true: The video packet is sent successfully.
-     *   false: The video packet is discarded.*/
-    virtual bool onSendVideoPacket(Packet &packet)
+    virtual bool onSendVideoPacket(Packet& packet)
     {
-        __android_log_print(ANDROID_LOG_INFO, "agoraencryption", "onSendAudioPacket1%d", 1);
-        int i;
-        //encrypt the packet
-        const unsigned char *p = packet.buffer;
-        const unsigned char *pe = packet.buffer + packet.size;
-        for (i = 0; p < pe && i < m_txVideoBuffer.size(); ++p, ++i)
-        {
-            m_txVideoBuffer[i] = *p ^ 0x55;
-        }
+
+        int outlen;
+        unsigned char outbuf[2048];
+        /* Set cipher type and mode */
+        EVP_EncryptInit_ex(ctx_video_send, EVP_aes_256_gcm(), NULL, NULL, NULL);
+        /* Set IV length if default 96 bits is not appropriate */
+        EVP_CIPHER_CTX_ctrl(ctx_video_send, EVP_CTRL_GCM_SET_IVLEN, sizeof(gcm_iv), NULL);
+        /* Initialise key and IV */
+        EVP_EncryptInit_ex(ctx_video_send, NULL, NULL, gcm_key, gcm_iv);
+        EVP_EncryptUpdate(ctx_video_send, outbuf, &outlen, packet.buffer, packet.size);
         //assign new buffer and the length back to SDK
-        packet.buffer = &m_txVideoBuffer[0];
-        packet.size = i;
+        packet.buffer = outbuf;
+        packet.size = outlen;
         return true;
     }
 
-    /**Occurs when the local user receives an audio packet.
-     * @param packet The received audio packet.
-     * @return
-     *   true: The audio packet is received successfully.
-     *   false: The audio packet is discarded.*/
-    virtual bool onReceiveAudioPacket(Packet &packet)
+    virtual bool onReceiveAudioPacket(Packet& packet)
     {
-        __android_log_print(ANDROID_LOG_INFO, "agoraencryption", "onReceiveAudioPacket0");
-        int i = 0;
-        //decrypt the packet
-        const unsigned char *p = packet.buffer;
-        const unsigned char *pe = packet.buffer + packet.size;
-        for (i = 0; p < pe && i < m_rxAudioBuffer.size(); ++p, ++i)
-        {
-            m_rxAudioBuffer[i] = *p ^ 0x55;
-        }
+        int outlen;
+        unsigned char outbuf[2048];
+        /* Select cipher */
+        EVP_DecryptInit_ex(ctx_audio_receive, EVP_aes_256_gcm(), NULL, NULL, NULL);
+        /* Set IV length, omit for 96 bits */
+        EVP_CIPHER_CTX_ctrl(ctx_audio_receive, EVP_CTRL_GCM_SET_IVLEN, sizeof(gcm_iv), NULL);
+        /* Specify key and IV */
+        EVP_DecryptInit_ex(ctx_audio_receive, NULL, NULL, gcm_key, gcm_iv);
+        /* Decrypt plaintext */
+        EVP_DecryptUpdate(ctx_audio_receive, outbuf, &outlen, packet.buffer, packet.size);
         //assign new buffer and the length back to SDK
-        packet.buffer = &m_rxAudioBuffer[0];
-        packet.size = i;
+        packet.buffer = outbuf;
+        packet.size = outlen;
         return true;
     }
 
-    /**Occurs when the local user receives a video packet.
-     * @param packet The received video packet.
-     * @return
-     *   true: The video packet is received successfully.
-     *   false: The video packet is discarded.*/
-    virtual bool onReceiveVideoPacket(Packet &packet)
+    virtual bool onReceiveVideoPacket(Packet& packet)
     {
-        __android_log_print(ANDROID_LOG_INFO, "agoraencryption", "onReceiveAudioPacket1");
-        int i = 0;
-        //decrypt the packet
-        const unsigned char *p = packet.buffer;
-        const unsigned char *pe = packet.buffer + packet.size;
-
-
-        for (i = 0; p < pe && i < m_rxVideoBuffer.size(); ++p, ++i)
-        {
-            m_rxVideoBuffer[i] = *p ^ 0x55;
-        }
+        int outlen;
+        unsigned char outbuf[2048];
+        /* Select cipher */
+        EVP_DecryptInit_ex(ctx_video_receive, EVP_aes_256_gcm(), NULL, NULL, NULL);
+        /* Set IV length, omit for 96 bits */
+        EVP_CIPHER_CTX_ctrl(ctx_video_receive, EVP_CTRL_GCM_SET_IVLEN, sizeof(gcm_iv), NULL);
+        /* Specify key and IV */
+        EVP_DecryptInit_ex(ctx_video_receive, NULL, NULL, gcm_key, gcm_iv);
+        /* Decrypt plaintext */
+        EVP_DecryptUpdate(ctx_video_receive, outbuf, &outlen, packet.buffer, packet.size);
         //assign new buffer and the length back to SDK
-        packet.buffer = &m_rxVideoBuffer[0];
-        packet.size = i;
+        packet.buffer = outbuf;
+        packet.size = outlen;
         return true;
     }
 
@@ -189,6 +186,10 @@ Java_io_agora_api_streamencrypt_PacketProcessor_doRegisterProcessing
      *      calling this method.*/
     int code = rtcEngine->registerPacketObserver(&s_packetObserver);
     __android_log_print(ANDROID_LOG_INFO, "agoraencryption", "%d", code);
+    EVP_CIPHER_CTX_free(s_packetObserver.ctx_audio_send);
+    EVP_CIPHER_CTX_free(s_packetObserver.ctx_video_send);
+    EVP_CIPHER_CTX_free(s_packetObserver.ctx_audio_receive);
+    EVP_CIPHER_CTX_free(s_packetObserver.ctx_video_receive);
 }
 
 JNIEXPORT void JNICALL
@@ -198,6 +199,10 @@ Java_io_agora_api_streamencrypt_PacketProcessor_doUnregisterProcessing
     if (!rtcEngine) return;
     __android_log_print(ANDROID_LOG_INFO, "agoraencryption", "doUnregisterProcessing");
     rtcEngine->registerPacketObserver(nullptr);
+    EVP_CIPHER_CTX_free(s_packetObserver.ctx_audio_send);
+    EVP_CIPHER_CTX_free(s_packetObserver.ctx_video_send);
+    EVP_CIPHER_CTX_free(s_packetObserver.ctx_audio_receive);
+    EVP_CIPHER_CTX_free(s_packetObserver.ctx_video_receive);
 }
 
 #ifdef __cplusplus
