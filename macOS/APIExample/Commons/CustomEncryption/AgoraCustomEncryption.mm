@@ -32,10 +32,6 @@ public:
     EVP_CIPHER_CTX *ctx_video_receive;
     AgoraCustomEncryptionObserver()
     {
-        m_txAudioBuffer.resize(2048);
-        m_rxAudioBuffer.resize(2048);
-        m_txVideoBuffer.resize(2048);
-        m_rxVideoBuffer.resize(2048);
     }
     virtual bool onSendAudioPacket(Packet& packet)
     {
@@ -50,9 +46,6 @@ public:
         EVP_EncryptInit_ex(ctx_audio_send, NULL, NULL, gcm_key, gcm_iv);
         /* Encrypt plaintext */
         EVP_EncryptUpdate(ctx_audio_send, outbuf, &outlen, packet.buffer, packet.size);
-        //assign new buffer and the length back to SDK
-        packet.buffer = outbuf;
-        packet.size = outlen;
         return true;
     }
 
@@ -68,9 +61,6 @@ public:
         /* Initialise key and IV */
         EVP_EncryptInit_ex(ctx_video_send, NULL, NULL, gcm_key, gcm_iv);
         EVP_EncryptUpdate(ctx_video_send, outbuf, &outlen, packet.buffer, packet.size);
-        //assign new buffer and the length back to SDK
-        packet.buffer = outbuf;
-        packet.size = outlen;
         return true;
     }
 
@@ -86,9 +76,6 @@ public:
         EVP_DecryptInit_ex(ctx_audio_receive, NULL, NULL, gcm_key, gcm_iv);
         /* Decrypt plaintext */
         EVP_DecryptUpdate(ctx_audio_receive, outbuf, &outlen, packet.buffer, packet.size);
-        //assign new buffer and the length back to SDK
-        packet.buffer = outbuf;
-        packet.size = outlen;
         return true;
     }
 
@@ -104,18 +91,9 @@ public:
         EVP_DecryptInit_ex(ctx_video_receive, NULL, NULL, gcm_key, gcm_iv);
         /* Decrypt plaintext */
         EVP_DecryptUpdate(ctx_video_receive, outbuf, &outlen, packet.buffer, packet.size);
-        //assign new buffer and the length back to SDK
-        packet.buffer = outbuf;
-        packet.size = outlen;
         return true;
     }
 
-private:
-    std::vector<unsigned char> m_txAudioBuffer; //buffer for sending audio data
-    std::vector<unsigned char> m_txVideoBuffer; //buffer for sending video data
-
-    std::vector<unsigned char> m_rxAudioBuffer; //buffer for receiving audio data
-    std::vector<unsigned char> m_rxVideoBuffer; //buffer for receiving video data
 };
 
 static AgoraCustomEncryptionObserver s_packetObserver;
