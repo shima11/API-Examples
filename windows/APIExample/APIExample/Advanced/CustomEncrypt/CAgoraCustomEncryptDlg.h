@@ -1,91 +1,130 @@
 ﻿#pragma once
 #include "AGVideoWnd.h"
 
+/*
+ * Copyright 2012-2016 The OpenSSL Project Authors. All Rights Reserved.
+ *
+ * Licensed under the Apache License 2.0 (the "License").  You may not use
+ * this file except in compliance with the License.  You can obtain a copy
+ * in the file LICENSE in the source distribution or at
+ * https://www.openssl.org/source/license.html
+ */
+#include <stdio.h>
+#include "openssl/bio.h"
+#include "openssl/evp.h"
+#define BUFFER_SIZE 2048
+static const unsigned char gcm_key[] = {
+	0xee, 0xbc, 0x1f, 0x57, 0x48, 0x7f, 0x51, 0x92, 0x1c, 0x04, 0x65, 0x66,
+	0x5f, 0x8a, 0xe6, 0xd1, 0x65, 0x8b, 0xb2, 0x6d, 0xe6, 0xf8, 0xa0, 0x69,
+	0xa3, 0x52, 0x02, 0x93, 0xa5, 0x72, 0x07, 0x8f
+};
+
+static const unsigned char gcm_iv[] = {
+	0x99, 0xaa, 0x3e, 0x68, 0xed, 0x81, 0x73, 0xa0, 0xee, 0xd0, 0x66, 0x84
+};
 
 class AgoraPacketObserver : public IPacketObserver
 {
 public:
 	AgoraPacketObserver()
 	{
-		m_txAudioBuffer.resize(2048);
-		m_rxAudioBuffer.resize(2048);
-		m_txVideoBuffer.resize(2048);
-		m_rxVideoBuffer.resize(2048);
+		rx_audio_ctx = EVP_CIPHER_CTX_new();
+		rx_video_ctx = EVP_CIPHER_CTX_new();
+		tx_audio_ctx = EVP_CIPHER_CTX_new();
+		tx_video_ctx = EVP_CIPHER_CTX_new();
 	}
+
+	~AgoraPacketObserver()
+	{
+		EVP_CIPHER_CTX_free(rx_audio_ctx);
+		EVP_CIPHER_CTX_free(rx_video_ctx);
+		EVP_CIPHER_CTX_free(tx_audio_ctx);
+		EVP_CIPHER_CTX_free(tx_video_ctx);
+	}
+
+	void aes_gcm_encrypt(EVP_CIPHER_CTX *ctx, unsigned char* outbuf, unsigned char* inbuf, int& size)
+	{
+		int outlen;
+		/* Set cipher type and mode */
+		EVP_EncryptInit_ex(ctx, EVP_aes_256_gcm(), NULL, NULL, NULL);
+		/* Set IV length if default 96 bits is not appropriate */
+		EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, sizeof(gcm_iv), NULL);
+		/* Initialise key and IV */
+		EVP_EncryptInit_ex(ctx, NULL, NULL, gcm_key, gcm_iv);
+		/* Encrypt plaintext */
+		EVP_EncryptUpdate(ctx, outbuf, &outlen, inbuf, size);
+		size = outlen;
+	}
+
+
+	void aes_gcm_decrypt(EVP_CIPHER_CTX *ctx, unsigned char* outbuf, unsigned char* inbuf, int& size)
+	{
+		int outlen;
+		/* Select cipher */
+		EVP_DecryptInit_ex(ctx, EVP_aes_256_gcm(), NULL, NULL, NULL);
+		/* Set IV length, omit for 96 bits */
+		EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, sizeof(gcm_iv), NULL);
+		/* Specify key and IV */
+		EVP_DecryptInit_ex(ctx, NULL, NULL, gcm_key, gcm_iv);
+		/* Decrypt plaintext */
+		EVP_DecryptUpdate(ctx, outbuf, &outlen, inbuf, size);
+		size = outlen;	
+	}
+
 	virtual bool onSendAudioPacket(Packet& packet)
 	{
-		size_t i;
 		//encrypt the packet
-		const unsigned char* p = packet.buffer;
-		const unsigned char* pe = packet.buffer + packet.size;
-
-
-		for (i = 0; p < pe && i < m_txAudioBuffer.size(); ++p, ++i)
-		{
-			m_txAudioBuffer[i] = *p ^ 0x55;
-		}
+		int size = packet.size < BUFFER_SIZE ? packet.size : BUFFER_SIZE;
+		aes_gcm_encrypt(tx_audio_ctx, m_txAudioBuffer, const_cast<unsigned char*>(packet.buffer), size);
 		//assign new buffer and the length back to SDK
-		packet.buffer = &m_txAudioBuffer[0];
-		packet.size = i;
+		packet.buffer = m_txAudioBuffer;
+		packet.size = size;
 		return true;
 	}
 
 	virtual bool onSendVideoPacket(Packet& packet)
 	{
-		size_t i;
 		//encrypt the packet
-		const unsigned char* p = packet.buffer;
-		const unsigned char* pe = packet.buffer + packet.size;
-		for (i = 0; p < pe && i < m_txVideoBuffer.size(); ++p, ++i)
-		{
-			m_txVideoBuffer[i] = *p ^ 0x55;
-		}
+		int size = packet.size < BUFFER_SIZE ? packet.size : BUFFER_SIZE;
+		aes_gcm_encrypt(tx_video_ctx, m_txVideoBuffer, const_cast<unsigned char*>(packet.buffer), size);
 		//assign new buffer and the length back to SDK
-		packet.buffer = &m_txVideoBuffer[0];
-		packet.size = i;
+		packet.buffer = m_txVideoBuffer;
+		packet.size = size;
 		return true;
 	}
 
 	virtual bool onReceiveAudioPacket(Packet& packet)
 	{
-		size_t i = 0;
 		//decrypt the packet
-		const unsigned char* p = packet.buffer;
-		const unsigned char* pe = packet.buffer + packet.size;
-		for (i = 0; p < pe && i < m_rxAudioBuffer.size(); ++p, ++i)
-		{
-			m_rxAudioBuffer[i] = *p ^ 0x55;
-		}
+		int size = packet.size < BUFFER_SIZE ? packet.size : BUFFER_SIZE;
+		aes_gcm_decrypt(rx_audio_ctx, m_rxAudioBuffer, const_cast<unsigned char*>(packet.buffer), size);
 		//assign new buffer and the length back to SDK
-		packet.buffer = &m_rxAudioBuffer[0];
-		packet.size = i;
+		packet.buffer = m_rxAudioBuffer;
+		packet.size = size;
 		return true;
 	}
 
 	virtual bool onReceiveVideoPacket(Packet& packet)
 	{
-		size_t i = 0;
 		//decrypt the packet
-		const unsigned char* p = packet.buffer;
-		const unsigned char* pe = packet.buffer + packet.size;
-
-
-		for (i = 0; p < pe && i < m_rxVideoBuffer.size(); ++p, ++i)
-		{
-			m_rxVideoBuffer[i] = *p ^ 0x55;
-		}
+		int size = packet.size < BUFFER_SIZE ? packet.size : BUFFER_SIZE;
+		aes_gcm_decrypt(rx_video_ctx, m_rxVideoBuffer, const_cast<unsigned char*>(packet.buffer), size);
 		//assign new buffer and the length back to SDK
-		packet.buffer = &m_rxVideoBuffer[0];
-		packet.size = i;
+		packet.buffer = m_rxVideoBuffer;
+		packet.size = size;
 		return true;
 	}
 
 private:
-	std::vector<unsigned char> m_txAudioBuffer; //buffer for sending audio data
-	std::vector<unsigned char> m_txVideoBuffer; //buffer for sending video data
+	unsigned char m_txAudioBuffer[BUFFER_SIZE]; //buffer for sending audio data
+	unsigned char m_txVideoBuffer[BUFFER_SIZE]; //buffer for sending video data
+	unsigned char m_rxAudioBuffer[BUFFER_SIZE]; //buffer for receiving audio data
+	unsigned char m_rxVideoBuffer[BUFFER_SIZE]; //buffer for receiving video data
 
-	std::vector<unsigned char> m_rxAudioBuffer; //buffer for receiving audio data
-	std::vector<unsigned char> m_rxVideoBuffer; //buffer for receiving video data
+	EVP_CIPHER_CTX *rx_audio_ctx = NULL;
+	EVP_CIPHER_CTX *rx_video_ctx = NULL;
+	EVP_CIPHER_CTX *tx_audio_ctx = NULL;
+	EVP_CIPHER_CTX *tx_video_ctx = NULL;
 };
 
 
@@ -196,6 +235,7 @@ private:
 	bool m_setEncrypt = false;
 	IRtcEngine* m_rtcEngine = nullptr;
 	CAGVideoWnd m_localVideoWnd;
+	CAGVideoWnd m_remoteVideoWnd;
 	CAgoraCustomEncryptHandler m_eventHandler;
 	AgoraPacketObserver m_customPacketObserver;
 	std::map<CString, IPacketObserver *> m_mapPacketObserver;

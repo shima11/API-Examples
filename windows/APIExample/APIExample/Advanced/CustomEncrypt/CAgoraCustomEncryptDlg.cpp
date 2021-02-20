@@ -148,11 +148,20 @@ void CAgoraCustomEncryptDlg::ResumeStatus()
 BOOL CAgoraCustomEncryptDlg::OnInitDialog()
 {
 	CDialogEx::OnInitDialog();
-	m_localVideoWnd.Create(NULL, NULL, WS_CHILD | WS_VISIBLE | WS_BORDER | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, CRect(0, 0, 1, 1), this, ID_BASEWND_VIDEO + 100);
-	RECT rcArea;
+	m_localVideoWnd.Create(NULL, NULL, WS_CHILD | WS_VISIBLE | WS_BORDER | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, CRect(0, 0, 1, 1),this, ID_BASEWND_VIDEO + 100);
+	m_remoteVideoWnd.Create(NULL, NULL, WS_CHILD | WS_VISIBLE | WS_BORDER | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, CRect(0, 0, 1, 1), this, ID_BASEWND_VIDEO + 101);
+	RECT rcArea, rcLeft, rcRight;
 	m_staVideoArea.GetClientRect(&rcArea);
-	m_localVideoWnd.MoveWindow(&rcArea);
+	rcLeft = rcRight = rcArea;
+	rcLeft.right = (rcArea.right - rcArea.left) / 2;
+	rcRight.left = (rcArea.right - rcArea.left) / 2 + 1;
+
+	m_localVideoWnd.MoveWindow(&rcLeft);
 	m_localVideoWnd.ShowWindow(SW_SHOW);
+
+	m_remoteVideoWnd.MoveWindow(&rcRight);
+	m_remoteVideoWnd.ShowWindow(SW_SHOW);
+
 	int i = 0;
 	m_cmbEncrypt.InsertString(i++, _T("custom encrypt"));
 	m_mapPacketObserver.insert(std::make_pair(_T("custom encrypt"), &m_customPacketObserver));
@@ -272,6 +281,14 @@ LRESULT CAgoraCustomEncryptDlg::OnEIDUserJoined(WPARAM wParam, LPARAM lParam)
 	CString strInfo;
 	strInfo.Format(_T("%u joined"), wParam);
 	m_lstInfo.InsertString(m_lstInfo.GetCount(), strInfo);
+
+	uid_t remoteUid = (uid_t)wParam;
+	VideoCanvas canvas;
+	canvas.renderMode = RENDER_MODE_FIT;
+	canvas.uid = remoteUid;
+	canvas.view = m_remoteVideoWnd.GetSafeHwnd();
+	m_rtcEngine->setupRemoteVideo(canvas);
+	m_lstInfo.InsertString(m_lstInfo.GetCount(), _T("setupRemoteVideo"));
 	return 0;
 }
 
