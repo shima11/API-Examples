@@ -127,8 +127,7 @@ public class SwitchExternalVideo extends BaseFragment implements View.OnClickLis
              * @param handler IRtcEngineEventHandler is an abstract class providing default implementation.
              *                The SDK uses this class to report to the app on SDK runtime events.*/
             ENGINE = RtcEngine.create(context.getApplicationContext(), getString(R.string.agora_app_id), iRtcEngineEventHandler);
-        }
-        catch (Exception e) {
+        } catch (Exception e) {
             e.printStackTrace();
             getActivity().onBackPressed();
         }
@@ -147,9 +146,9 @@ public class SwitchExternalVideo extends BaseFragment implements View.OnClickLis
                 data.putExtra(ExternalVideoInputManager.FLAG_FRAME_RATE, DEFAULT_SHARE_FRAME_RATE);
 
                 setVideoConfig(ExternalVideoInputManager.TYPE_SCREEN_SHARE, metrics.widthPixels, metrics.heightPixels);
+                Log.d(TAG, "setExternalVideoInput");
                 mService.setExternalVideoInput(ExternalVideoInputManager.TYPE_SCREEN_SHARE, data);
-            }
-            catch (RemoteException e) {
+            } catch (RemoteException e) {
                 e.printStackTrace();
             }
         }
@@ -231,21 +230,25 @@ public class SwitchExternalVideo extends BaseFragment implements View.OnClickLis
                             RelativeLayout.LayoutParams.MATCH_PARENT,
                             RelativeLayout.LayoutParams.MATCH_PARENT);
                 }
-            }
-            catch (RemoteException e) {
+            } catch (RemoteException e) {
                 e.printStackTrace();
             }
         } else if (v.getId() == R.id.screenShare) {
-            if (Build.VERSION.SDK_INT > Build.VERSION_CODES.LOLLIPOP) {
-                /**remove local preview*/
-                fl_local.removeAllViews();
-                /***/
-                MediaProjectionManager mpm = (MediaProjectionManager)
-                        getContext().getSystemService(Context.MEDIA_PROJECTION_SERVICE);
-                Intent intent = mpm.createScreenCaptureIntent();
-                startActivityForResult(intent, PROJECTION_REQ_CODE);
+            if (mServiceConnection == null) {
+                bindVideoService();
+                if (Build.VERSION.SDK_INT > Build.VERSION_CODES.LOLLIPOP) {
+                    /**remove local preview*/
+                    fl_local.removeAllViews();
+                    /***/
+                    MediaProjectionManager mpm = (MediaProjectionManager)
+                            getContext().getSystemService(Context.MEDIA_PROJECTION_SERVICE);
+                    Intent intent = mpm.createScreenCaptureIntent();
+                    startActivityForResult(intent, PROJECTION_REQ_CODE);
+                } else {
+                    showAlert(getString(R.string.lowversiontip));
+                }
             } else {
-                showAlert(getString(R.string.lowversiontip));
+                unbindVideoService();
             }
         }
     }
@@ -331,6 +334,7 @@ public class SwitchExternalVideo extends BaseFragment implements View.OnClickLis
     }
 
     private void bindVideoService() {
+        Log.d(TAG, "bindVideoService() called");
         Intent intent = new Intent();
         intent.setClass(getContext(), ExternalVideoInputService.class);
         mServiceConnection = new VideoInputServiceConnection();
@@ -338,6 +342,7 @@ public class SwitchExternalVideo extends BaseFragment implements View.OnClickLis
     }
 
     private void unbindVideoService() {
+        Log.d(TAG, "unbindVideoService() called");
         if (mServiceConnection != null) {
             getContext().unbindService(mServiceConnection);
             mServiceConnection = null;
@@ -353,14 +358,14 @@ public class SwitchExternalVideo extends BaseFragment implements View.OnClickLis
          * Warning code: https://docs.agora.io/en/Voice/API%20Reference/java/classio_1_1agora_1_1rtc_1_1_i_rtc_engine_event_handler_1_1_warn_code.html*/
         @Override
         public void onWarning(int warn) {
-            Log.w(TAG, String.format("onWarning code %d message %s", warn, RtcEngine.getErrorDescription(warn)));
+//            Log.w(TAG, String.format("onWarning code %d message %s", warn, RtcEngine.getErrorDescription(warn)));
         }
 
         /**Reports an error during SDK runtime.
          * Error code: https://docs.agora.io/en/Voice/API%20Reference/java/classio_1_1agora_1_1rtc_1_1_i_rtc_engine_event_handler_1_1_error_code.html*/
         @Override
         public void onError(int err) {
-            Log.e(TAG, String.format("onError code %d message %s", err, RtcEngine.getErrorDescription(err)));
+//            Log.e(TAG, String.format("onError code %d message %s", err, RtcEngine.getErrorDescription(err)));
             showAlert(String.format("onError code %d message %s", err, RtcEngine.getErrorDescription(err)));
         }
 
@@ -382,6 +387,8 @@ public class SwitchExternalVideo extends BaseFragment implements View.OnClickLis
                 screenShare.setEnabled(true);
                 localVideo.setEnabled(mLocalVideoExists);
                 bindVideoService();
+
+                screenShare.performClick();
             });
         }
 
@@ -425,7 +432,9 @@ public class SwitchExternalVideo extends BaseFragment implements View.OnClickLis
         @Override
         public void onRemoteVideoStateChanged(int uid, int state, int reason, int elapsed) {
             super.onRemoteVideoStateChanged(uid, state, reason, elapsed);
-            Log.i(TAG, "onRemoteVideoStateChanged:uid->" + uid + ", state->" + state);
+            Log.d(TAG,
+                    "onRemoteVideoStateChanged() called with: uid = [" + uid + "], state = [" + state
+                            + "], reason = [" + reason + "], elapsed = [" + elapsed + "]");
             if (state == REMOTE_VIDEO_STATE_STARTING) {
                 /**Check if the context is correct*/
                 Context context = getContext();
@@ -443,6 +452,7 @@ public class SwitchExternalVideo extends BaseFragment implements View.OnClickLis
                     fl_remote.addView(surfaceView, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                             ViewGroup.LayoutParams.MATCH_PARENT));
                     /**Setup remote video to render*/
+                    Log.i(TAG, "setupRemoteVideo:uid->" + uid + ", state->" + state);
                     ENGINE.setupRemoteVideo(new VideoCanvas(surfaceView, RENDER_MODE_HIDDEN, uid));
                 });
             }
@@ -484,16 +494,26 @@ public class SwitchExternalVideo extends BaseFragment implements View.OnClickLis
                 }
             });
         }
+
+        @Override
+        public void onLocalVideoStateChanged(int localVideoState, int error) {
+            super.onLocalVideoStateChanged(localVideoState, error);
+            Log.d(TAG,
+                    "onLocalVideoStateChanged() called with: localVideoState = [" + localVideoState
+                            + "], error = [" + error + "]");
+        }
     };
 
     private class VideoInputServiceConnection implements ServiceConnection {
         @Override
         public void onServiceConnected(ComponentName componentName, IBinder iBinder) {
+            Log.d(TAG, "onServiceConnected() called with: componentName = [" + componentName + "], iBinder = [" + iBinder + "]");
             mService = (IExternalVideoInputService) iBinder;
         }
 
         @Override
         public void onServiceDisconnected(ComponentName componentName) {
+            Log.d(TAG, "onServiceDisconnected() called with: componentName = [" + componentName + "]");
             mService = null;
         }
     }

@@ -2,6 +2,7 @@ package io.agora.advancedvideo.externvideosource;
 
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.Bitmap;
 import android.graphics.SurfaceTexture;
 import android.opengl.EGLSurface;
 import android.opengl.GLES11Ext;
@@ -13,11 +14,15 @@ import android.view.Surface;
 
 import androidx.annotation.RequiresApi;
 
+import java.io.File;
+
 import io.agora.advancedvideo.externvideosource.localvideo.LocalVideoInput;
 import io.agora.advancedvideo.externvideosource.screenshare.ScreenShareInput;
 import io.agora.api.component.gles.ProgramTextureOES;
 import io.agora.api.component.gles.core.EglCore;
 import io.agora.api.component.gles.core.GlUtil;
+import io.agora.base.VideoFrame;
+import io.agora.base.internal.video.RendererCommon;
 import io.agora.rtc.gl.TextureTransformer;
 import io.agora.rtc.mediaio.IVideoFrameConsumer;
 import io.agora.rtc.mediaio.IVideoSource;
@@ -196,8 +201,7 @@ public class ExternalVideoInputManager implements IVideoSource {
         return MediaIO.ContentHint.NONE.intValue();
     }
 
-    private class ExternalVideoInputThread extends Thread
-    {
+    private class ExternalVideoInputThread extends Thread {
         private final String TAG = ExternalVideoInputThread.class.getSimpleName();
         private final int DEFAULT_WAIT_TIME = 1;
 
@@ -212,8 +216,11 @@ public class ExternalVideoInputManager implements IVideoSource {
         int mVideoHeight;
         private volatile boolean mStopped;
         private volatile boolean mPaused;
+        private TextureIdHelp mTextureIdHelp;
 
         private void prepare() {
+            Log.d(TAG, "prepare() called");
+            mTextureIdHelp = new TextureIdHelp();
             mEglCore = new EglCore();
             mEglSurface = mEglCore.createOffscreenSurface(1, 1);
             mEglCore.makeCurrent(mEglSurface);
@@ -231,6 +238,7 @@ public class ExternalVideoInputManager implements IVideoSource {
         }
 
         private void release() {
+            Log.d(TAG, "release() called");
             if (ENGINE == null) {
                 return;
             }
@@ -244,6 +252,7 @@ public class ExternalVideoInputManager implements IVideoSource {
             GlUtil.deleteTextureObject(mTextureId);
             mTextureId = 0;
             mEglCore.release();
+            mTextureIdHelp.release();
         }
 
         @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
@@ -305,8 +314,7 @@ public class ExternalVideoInputManager implements IVideoSource {
                 try {
                     mSurfaceTexture.updateTexImage();
                     mSurfaceTexture.getTransformMatrix(mTransform);
-                }
-                catch (Exception e) {
+                } catch (Exception e) {
                     e.printStackTrace();
                 }
 
@@ -328,6 +336,17 @@ public class ExternalVideoInputManager implements IVideoSource {
                      * @param timestamp Timestamp of the video frame. For each video frame, you need to set a timestamp
                      * @param matrix Matrix of the texture. The float value is between 0 and 1, such as 0.1, 0.2, and so on*/
                     textureTransformer.copy(mTextureId, TEXTURE_OES.intValue(), mVideoWidth, mVideoHeight);
+
+                    Bitmap mBitmap = mTextureIdHelp.textureIdToBitmap(
+                            mVideoWidth,
+                            mVideoHeight,
+                            0,
+                            VideoFrame.TextureBuffer.Type.OES,
+                            mTextureId,
+                            RendererCommon.convertMatrixToAndroidGraphicsMatrix(mTransform));
+                    mTextureIdHelp.saveBitmap(new File(context.getExternalCacheDir(), System.currentTimeMillis() + ".jpg"), mBitmap);
+                    mBitmap.recycle();
+
                     mConsumer.consumeTextureFrame(mTextureId,
                             TEXTURE_OES.intValue(),
                             mVideoWidth, mVideoHeight, 0,
@@ -366,8 +385,7 @@ public class ExternalVideoInputManager implements IVideoSource {
         private void waitForTime(int time) {
             try {
                 Thread.sleep(time);
-            }
-            catch (InterruptedException e) {
+            } catch (InterruptedException e) {
                 e.printStackTrace();
             }
         }
